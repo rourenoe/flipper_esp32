@@ -1,0 +1,22 @@
+#include "main.h"
+// Paramètres de configuration des LEDs
+CRGB leds[NUM_LEDS];  // Déclaration de leds ici
+void setup() { 
+  // Initialise la communication avec les LEDs
+	FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
+	FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+	FastLED.addLeds<WS2812B, 19, GRB>(leds, NUM_LEDS);
+	FastLED.addLeds<WS2812B, 19, GRB>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+	FastLED.addLeds<WS2812B, 13, GRB>(leds, NUM_LEDS);
+	FastLED.addLeds<WS2812B, 13, GRB>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+	FastLED.setBrightness(50);
+	FastLED.setMaxPowerInVoltsAndMilliamps(5, 14000);
+
+  Serial.begin(115200);
+  FastLED.clear();
+  FastLED.show();
+}
+
+void loop() {
+    
+}

@@ -1,0 +1,5 @@
+1) compile and run 
+pio run --target upload
+
+2) open Serial monitor 
+pio device monitor --baud 115200
