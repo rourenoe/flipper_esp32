@@ -1,4 +1,7 @@
 #include "main.h"
+#include "leds.h"
+// Initialize pins and interrupts for target detection
+
 // Paramètres de configuration des LEDs
 CRGB leds[NUM_LEDS];  // Déclaration de leds ici
 
@@ -8,11 +11,33 @@ volatile bool triggerDetectedBumpTop = false;
 volatile bool triggerDetectedRmpHill = false;
 volatile bool triggerDetectedRmpExt = false;
 
+// Target detection flags
+volatile bool triggerDetectedCiblePack1 = false;
+volatile bool triggerDetectedCiblePack2 = false;
+volatile bool triggerDetectedCiblePack3 = false;
+volatile bool triggerDetectedCibleCowboyTop = false;
+
 unsigned long timerDelayHillStart = 0; // Pour compter les 3 secondes
 bool isWaitingForHill = false;
 
 void IRAM_ATTR onTriggerRmpExt() {
     triggerDetectedRmpExt = true;
+}
+
+void IRAM_ATTR onTriggerCiblePack1() {
+    triggerDetectedCiblePack1 = true;
+}
+
+void IRAM_ATTR onTriggerCiblePack2() {
+    triggerDetectedCiblePack2 = true;
+}
+
+void IRAM_ATTR onTriggerCiblePack3() {
+    triggerDetectedCiblePack3 = true;
+}
+
+void IRAM_ATTR onTriggerCibleCowboyTop() {
+    triggerDetectedCibleCowboyTop = true;
 }
 
 void IRAM_ATTR onTriggerBumpBottomLeft() {
@@ -33,17 +58,30 @@ void IRAM_ATTR onTriggerBumpTop() {
 
 void setup() {
   //AUTOSTART______________________
-  pinMode(PC_START, OUTPUT);
-  digitalWrite(PC_START, HIGH);
-  delay(100);
-  digitalWrite(PC_START, LOW);
-  pinMode(PC_START, INPUT);
-  digitalWrite(PC_START, LOW);
-  pinMode(SEL_HILL, OUTPUT);
-  pinMode(SEL_BUMP_BOTTOM_LEFT, OUTPUT);
-  pinMode(SEL_BUMP_BOTTOM_RIGHT, OUTPUT);
-  pinMode(SEL_BUMP_TOP, OUTPUT);
+    pinMode(PC_START, OUTPUT);
+    digitalWrite(PC_START, HIGH);
+    delay(100);
+    digitalWrite(PC_START, LOW);
+    pinMode(PC_START, INPUT);
+    digitalWrite(PC_START, LOW);
+    pinMode(SEL_HILL, OUTPUT);
+    pinMode(SEL_BUMP_BOTTOM_LEFT, OUTPUT);
+    pinMode(SEL_BUMP_BOTTOM_RIGHT, OUTPUT);
+    pinMode(SEL_BUMP_TOP, OUTPUT);
 
+
+ //Detection targets setup
+    pinMode(DETECTION_PACK_CIBLE_1, INPUT_PULLDOWN);
+    attachInterrupt(digitalPinToInterrupt(DETECTION_PACK_CIBLE_1), onTriggerCiblePack1, RISING);
+
+    pinMode(DETECTION_PACK_CIBLE_2, INPUT_PULLDOWN);
+    attachInterrupt(digitalPinToInterrupt(DETECTION_PACK_CIBLE_2), onTriggerCiblePack2, RISING);
+
+    pinMode(DETECTION_PACK_CIBLE_3, INPUT_PULLDOWN);
+    attachInterrupt(digitalPinToInterrupt(DETECTION_PACK_CIBLE_3), onTriggerCiblePack3, RISING);
+
+    pinMode(DETECTION_CIBLE_COWBOY_TOP, INPUT_PULLDOWN);
+    attachInterrupt(digitalPinToInterrupt(DETECTION_CIBLE_COWBOY_TOP), onTriggerCibleCowboyTop, RISING);
   // Setup interrupt for trigger SEL_HILL
     pinMode(RMP_HILL, INPUT_PULLDOWN);
     attachInterrupt(digitalPinToInterrupt(RMP_HILL), onTriggerRmpHill, RISING);
@@ -52,20 +90,15 @@ void setup() {
     pinMode(DETECTION_RMP_EXT, INPUT_PULLDOWN);
     attachInterrupt(digitalPinToInterrupt(DETECTION_RMP_EXT), onTriggerRmpExt, RISING);
 
-  pinMode(BUMP_BOTTOM_LEFT, INPUT_PULLDOWN);
-  attachInterrupt(digitalPinToInterrupt(BUMP_BOTTOM_LEFT), onTriggerBumpBottomLeft, RISING);
+    pinMode(BUMP_BOTTOM_LEFT, INPUT_PULLDOWN);
+    attachInterrupt(digitalPinToInterrupt(BUMP_BOTTOM_LEFT), onTriggerBumpBottomLeft, RISING);
 
-  pinMode(BUMP_BOTTOM_RIGHT, INPUT_PULLDOWN);
-  attachInterrupt(digitalPinToInterrupt(BUMP_BOTTOM_RIGHT), onTriggerBumpBottomRight, RISING);
-  pinMode(BUMP_TOP, INPUT_PULLDOWN);
-  attachInterrupt(digitalPinToInterrupt(BUMP_TOP), onTriggerBumpTop, RISING);
+    pinMode(BUMP_BOTTOM_RIGHT, INPUT_PULLDOWN);
+    attachInterrupt(digitalPinToInterrupt(BUMP_BOTTOM_RIGHT), onTriggerBumpBottomRight, RISING);
+    pinMode(BUMP_TOP, INPUT_PULLDOWN);
+    attachInterrupt(digitalPinToInterrupt(BUMP_TOP), onTriggerBumpTop, RISING);
 
-
-  FastLED.addLeds<WS2812B, LED_PACK_CIBLE, GRB>(leds, NUM_LEDS);
-  //FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
-  FastLED.setBrightness(100); // Changé de 0 à 100 pour voir les LEDs
-  //FastLED.setMaxPowerInVoltsAndMilliamps(5, 14000);
-
+  FastLED.setBrightness(100);
   Serial.begin(115200);
   for (int i = 0; i < 40; i++) {
             leds[i] = CRGB::Red;
@@ -77,6 +110,9 @@ void setup() {
     }
     FastLED.clear();
     FastLED.show();
+
+    // Register physical LED strips (constructed from constants)
+    register_led_strips();
 }
 
 // Non-blocking timers for triggers
@@ -91,44 +127,6 @@ unsigned long bumpTopTimer = 0;
 bool bumpTopActive = false;
 
 
-void update_led_pc() {
-    static int redBrightness = 0;
-    static int blueBrightness = 255;
-    static int redDirection = 3;
-    static int blueDirection = -1;
-    static unsigned long lastUpdate = 0;
-    unsigned long now = millis();
-    if (now - lastUpdate >= 5) {
-        // Update red LEDs (0-39)
-        for (int i = 0; i < 40; i++) {
-            leds[i] = CRGB(redBrightness, 0, 0);
-        }
-        // Update blue LEDs (40-52)
-        for (int i = 40; i < 53; i++) {
-            leds[i] = CRGB(0, 0, blueBrightness);
-        }
-        FastLED.show();
-        // Update brightness values and directions
-        redBrightness += redDirection;
-        blueBrightness += blueDirection;
-        // Constrain brightness values and change direction
-        if (redBrightness >= 255) {
-            redBrightness = 255;
-            redDirection = -1;
-        } else if (redBrightness <= 0) {
-            redBrightness = 0;
-            redDirection = 1;
-        }
-        if (blueBrightness >= 255) {
-            blueBrightness = 255;
-            blueDirection = -1;
-        } else if (blueBrightness <= 0) {
-            blueBrightness = 0;
-            blueDirection = 1;
-        }
-        lastUpdate = now;
-    }
-}
 
 // Cooldown variables for bumpers
 static unsigned long lastBumpBottomLeftActivation = 0;
@@ -277,6 +275,26 @@ void check_rmp_ext(unsigned long now) {
     }
 }
 
+// Print which target was hit and reset the corresponding flags
+void check_targets(unsigned long now) {
+    if (triggerDetectedCiblePack1) {
+        Serial.println("Detection PACK CIBLE 1 !!!");
+        triggerDetectedCiblePack1 = false;
+    }
+    if (triggerDetectedCiblePack2) {
+        Serial.println("Detection PACK CIBLE 2 !!!");
+        triggerDetectedCiblePack2 = false;
+    }
+    if (triggerDetectedCiblePack3) {
+        Serial.println("Detection PACK CIBLE 3 !!!");
+        triggerDetectedCiblePack3 = false;
+    }
+    if (triggerDetectedCibleCowboyTop) {
+        Serial.println("Detection CIBLE COWBOY TOP !!!");
+        triggerDetectedCibleCowboyTop = false;
+    }
+}
+
 void loop() {
     unsigned long now = millis();
 
@@ -287,5 +305,8 @@ void loop() {
     check_bumpers_right(now);
     check_bumpers_top(now);
     check_rmp_ext(now);
-    update_led_pc();
+    // Check and print target detections
+    check_targets(now);
+    // Update LEDs (animations + blink handling)
+    leds_update();
 }
