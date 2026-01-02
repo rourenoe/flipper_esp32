@@ -1,22 +1,40 @@
 #ifndef LEDS_H
 #define LEDS_H
-#include <Arduino.h>
+
 #include <FastLED.h>
 
-// Register a logical LED strip mapping to the shared `leds` buffer.
-// `pin` is only informational here; FastLED must already be configured for the underlying LEDs.
-// Returns a stripId (>=0) or -1 on error.
-// Register physical strips with FastLED using compile-time constants.
-// This function does not take arguments; it registers the known constant strips.
-void register_led_strips();
+// Liste des IDs d'animations disponibles
+// Doit correspondre aux fonctions dans animations.cpp
+enum AnimationType {
+    ANIM_OFF,
+    ANIM_SOLID,
+    ANIM_BREATHE,
+    ANIM_RAINBOW,
+    ANIM_THEATER_CHASE,
+    ANIM_SCANNER
+};
 
-// Set a color for a given LED within a logical strip (immediate show).
-void led_set_color(int stripId, int offset, CRGB color);
+// IDs logiques des bandeaux
+#define PIN_LED_PACK_CIBLE 4
+#define PIN_LED_DRAGON 13
+#define PIN_LED_SALOON 19
 
-// Blink a LED on a strip for `durationMs` milliseconds (non-blocking).
-void led_blink(int stripId, int offset, CRGB color, unsigned long durationMs);
+#define STRIP_PACK_CIBLE 0
+#define STRIP_DRAGON 1
+#define STRIP_SALOON 2
 
-// Call regularly from loop() to process timed blinks and animations.
+#define NUM_STRIPS 3
+
+// Initialisation globale
+void leds_init();
+
+// Update global (à appeler dans loop)
 void leds_update();
 
-#endif // LEDS_H
+// Commandes
+void leds_set_animation(int stripId, AnimationType anim, CRGB color, int speed = 50);
+void leds_flash_pixel(int stripId, int pixelIdx, CRGB color, int duration = 200);
+// Set a single pixel on a given strip (safe bounds-checked)
+void leds_set_pixel(int stripId, int pixelIdx, CRGB color);
+
+#endif

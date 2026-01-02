@@ -1,120 +1,141 @@
 #include "leds.h"
-#include "main.h"
+#include "animations.h" // On inclut notre nouvelle librairie d'effets
+#include "main.h"       // Pour les constantes de PIN
 
-// Simple mapping of logical strips to ranges in the global `leds` array.
-static const int MAX_STRIPS = 8;
-static int stripStart[MAX_STRIPS];
-static int stripLen[MAX_STRIPS];
-static uint8_t stripPin[MAX_STRIPS];
-static int stripCount = 0;
+// --- Config Hardware len led strip ---
+#define LEN_LED_PACK_CIBLE 53
+#define LEN_LED_DRAGON 30
+#define LEN_LED_SALOON 40
 
-// Blink state per global LED index
-static unsigned long blinkEnd[NUM_LEDS];
-static CRGB savedColor[NUM_LEDS];
-
-// Animation state (moved from main.cpp)
-static int redBrightness = 0;
-static int blueBrightness = 255;
-static int redDirection = 3;
-static int blueDirection = -1;
-static unsigned long lastAnimUpdate = 0;
+CRGB leds_pack_cible[LEN_LED_PACK_CIBLE];
+CRGB leds_dragon[LEN_LED_DRAGON];
+CRGB leds_salon[LEN_LED_SALOON];
 
 
-void register_led_strips() {
-    stripCount = 0;
-    // Manually construct the known strips. Adjust start/length as needed.
-#ifdef LED_PACK_CIBLE
-    stripPin[stripCount] = LED_PACK_CIBLE;
-    stripStart[stripCount] = 0;
-    stripLen[stripCount] = NUM_LEDS;
-    FastLED.addLeds<WS2812B, LED_PACK_CIBLE, GRB>(leds + stripStart[stripCount], stripLen[stripCount]);
-    stripCount++;
-#endif
+// --- Controller ---
+class LedStripController {
+  public:
+    CRGB* leds;
+    int numLeds;
+    
+    // État
+    AnimationType currentAnim;
+    CRGB baseColor;
+    int animSpeed;
+    unsigned long lastAnimUpdate;
+    int animStep; // Compteur générique passé aux fonctions d'animation
 
-#ifdef LED_DRAGON
-    stripPin[stripCount] = LED_DRAGON;
-    stripStart[stripCount] = 0;
-    stripLen[stripCount] = NUM_LEDS;
-    FastLED.addLeds<WS2812B, LED_DRAGON, GRB>(leds + stripStart[stripCount], stripLen[stripCount]);
-    stripCount++;
-#endif
+    // Gestion Flash (inchangée, c'est de la logique pure de contrôleur)
+    struct FlashEvent {
+        int pixelIdx;
+        unsigned long endTime;
+        CRGB color;
+        bool active;
+    };
+    static const int MAX_FLASHES = 5;
+    FlashEvent flashes[MAX_FLASHES];
 
-#ifdef LED_SALOON
-    stripPin[stripCount] = LED_SALOON;
-    stripStart[stripCount] = 0;
-    stripLen[stripCount] = NUM_LEDS;
-    FastLED.addLeds<WS2812B, LED_SALOON, GRB>(leds + stripStart[stripCount], stripLen[stripCount]);
-    stripCount++;
-#endif
+    void init(CRGB* ledArray, int count) {
+        leds = ledArray;
+        numLeds = count;
+        currentAnim = ANIM_OFF;
+        baseColor = CRGB::Black;
+        animSpeed = 50;
+        animStep = 0;
+        lastAnimUpdate = 0;
+        for(int i=0; i<MAX_FLASHES; i++) flashes[i].active = false;
+    }
+
+    void triggerFlash(int idx, CRGB color, int duration) {
+        if (idx < 0 || idx >= numLeds) return;
+        unsigned long now = millis();
+        for(int i=0; i<MAX_FLASHES; i++) {
+            if (!flashes[i].active || flashes[i].pixelIdx == idx) {
+                flashes[i].active = true;
+                flashes[i].pixelIdx = idx;
+                flashes[i].color = color;
+                flashes[i].endTime = now + duration;
+                return;
+            }
+        }
+    }
+
+    void update(unsigned long now) {
+        // 1. GESTION DE L'ANIMATION DE FOND
+        if (now - lastAnimUpdate >= animSpeed) {
+            lastAnimUpdate = now;
+            animStep++; // On incrémente le compteur de temps de l'animation
+            
+            // C'est ici qu'on fait le LIEN vers les fichiers externes
+            switch (currentAnim) {
+                case ANIM_OFF:           fill_solid(leds, numLeds, CRGB::Black); break;
+                case ANIM_SOLID:         anim_solid(leds, numLeds, baseColor); break;
+                case ANIM_BREATHE:       anim_breathe(leds, numLeds, baseColor, animStep); break;
+                case ANIM_RAINBOW:       anim_rainbow(leds, numLeds, animStep); break;
+                case ANIM_THEATER_CHASE: anim_theater_chase(leds, numLeds, baseColor, animStep); break;
+                case ANIM_SCANNER:       anim_scanner(leds, numLeds, baseColor, animStep); break;
+            }
+        }
+
+        // 2. GESTION DES FLASHS (Overlay prioritaire)
+        for(int i=0; i<MAX_FLASHES; i++) {
+            if (flashes[i].active) {
+                if (now > flashes[i].endTime) {
+                    flashes[i].active = false;
+                    // Note: Au prochain tour d'animation, le pixel reprendra sa couleur d'anim
+                } else {
+                    leds[flashes[i].pixelIdx] = flashes[i].color;
+                }
+            }
+        }
+    }
+};
+
+LedStripController strips[NUM_STRIPS];
+
+// --- Implémentation Publique ---
+
+void leds_init() {
+    // Mapping Hardware FastLED
+    FastLED.addLeds<WS2812B, PIN_LED_PACK_CIBLE, GRB>(leds_pack_cible, LEN_LED_PACK_CIBLE);
+    FastLED.addLeds<WS2812B, PIN_LED_DRAGON,     GRB>(leds_dragon, LEN_LED_DRAGON);
+    FastLED.addLeds<WS2812B, PIN_LED_SALOON,     GRB>(leds_salon, LEN_LED_SALOON);
+    FastLED.setBrightness(100);
+
+    // Init Logique
+    strips[0].init(leds_pack_cible, LEN_LED_PACK_CIBLE);
+    strips[1].init(leds_dragon, LEN_LED_DRAGON);
+    strips[2].init(leds_salon, LEN_LED_SALOON);
 }
 
-void led_set_color(int stripId, int offset, CRGB color) {
-    if (stripId < 0 || stripId >= stripCount) return;
-    if (offset < 0 || offset >= stripLen[stripId]) return;
-    int idx = stripStart[stripId] + offset;
-    leds[idx] = color;
-    FastLED.show();
-}
-
-void led_blink(int stripId, int offset, CRGB color, unsigned long durationMs) {
-    if (stripId < 0 || stripId >= stripCount) return;
-    if (offset < 0 || offset >= stripLen[stripId]) return;
-    int idx = stripStart[stripId] + offset;
-    // save current color
-    savedColor[idx] = leds[idx];
-    leds[idx] = color;
-    blinkEnd[idx] = millis() + durationMs;
-    FastLED.show();
+// Public helper to set a pixel on a given strip
+void leds_set_pixel(int stripId, int pixelIdx, CRGB color) {
+    if (stripId < 0 || stripId >= NUM_STRIPS) return;
+    LedStripController &s = strips[stripId];
+    if (!s.leds) return;
+    if (pixelIdx < 0 || pixelIdx >= s.numLeds) return;
+    s.leds[pixelIdx] = color;
 }
 
 void leds_update() {
     unsigned long now = millis();
-    bool changed = false;
-
-    // Animation update (every 5ms like original)
-    if (now - lastAnimUpdate >= 5) {
-        // Update red LEDs (0-39)
-        for (int i = 0; i < 40 && i < NUM_LEDS; i++) {
-            if (blinkEnd[i] == 0) {
-                leds[i] = CRGB(redBrightness, 0, 0);
-                changed = true;
-            }
-        }
-        // Update blue LEDs (40-52)
-        for (int i = 40; i < 53 && i < NUM_LEDS; i++) {
-            if (blinkEnd[i] == 0) {
-                leds[i] = CRGB(0, 0, blueBrightness);
-                changed = true;
-            }
-        }
-        // Update brightness values and directions
-        redBrightness += redDirection;
-        blueBrightness += blueDirection;
-        if (redBrightness >= 255) {
-            redBrightness = 255;
-            redDirection = -1;
-        } else if (redBrightness <= 0) {
-            redBrightness = 0;
-            redDirection = 1;
-        }
-        if (blueBrightness >= 255) {
-            blueBrightness = 255;
-            blueDirection = -1;
-        } else if (blueBrightness <= 0) {
-            blueBrightness = 0;
-            blueDirection = 1;
-        }
-        lastAnimUpdate = now;
+    for(int i=0; i<NUM_STRIPS; i++) {
+        strips[i].update(now);
     }
+    FastLED.show();
+}
 
-    // Process blink expirations
-    for (int i = 0; i < NUM_LEDS; ++i) {
-        if (blinkEnd[i] != 0 && now >= blinkEnd[i]) {
-            leds[i] = savedColor[i];
-            blinkEnd[i] = 0;
-            changed = true;
-        }
+void leds_set_animation(int stripId, AnimationType anim, CRGB color, int speed) {
+    if(stripId >= 0 && stripId < NUM_STRIPS) {
+        strips[stripId].currentAnim = anim;
+        strips[stripId].baseColor = color;
+        strips[stripId].animSpeed = speed;
+        strips[stripId].animStep = 0; // Reset l'animation au début
     }
+}
 
-    if (changed) FastLED.show();
+void leds_flash_pixel(int stripId, int pixelIdx, CRGB color, int duration) {
+    if(stripId >= 0 && stripId < NUM_STRIPS) {
+        strips[stripId].triggerFlash(pixelIdx, color, duration);
+    }
 }

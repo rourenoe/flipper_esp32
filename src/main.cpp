@@ -3,7 +3,6 @@
 // Initialize pins and interrupts for target detection
 
 // Paramètres de configuration des LEDs
-CRGB leds[NUM_LEDS];  // Déclaration de leds ici
 
 volatile bool triggerDetectedBumpBottomLeft = false;
 volatile bool triggerDetectedBumpBottomRight = false;
@@ -100,19 +99,19 @@ void setup() {
 
   FastLED.setBrightness(100);
   Serial.begin(115200);
+  // Initialize LED strips before setting pixels
+  leds_init();
   for (int i = 0; i < 40; i++) {
-            leds[i] = CRGB::Red;
-        
+        leds_set_pixel(STRIP_PACK_CIBLE, i, CRGB::Red);
     }
     for (int i = 40; i < 53; i++) {
-            leds[i] = CRGB::Blue;
-        
+        leds_set_pixel(STRIP_PACK_CIBLE, i, CRGB::Blue);
     }
-    FastLED.clear();
     FastLED.show();
-
-    // Register physical LED strips (constructed from constants)
-    register_led_strips();
+    leds_set_animation(STRIP_PACK_CIBLE, ANIM_SCANNER, CRGB::Red);
+    leds_set_animation(STRIP_DRAGON, ANIM_BREATHE, CRGB::Green, 20);
+    leds_set_animation(STRIP_SALOON, ANIM_THEATER_CHASE, CRGB::Gold, 10);
+    
 }
 
 // Non-blocking timers for triggers
@@ -145,7 +144,7 @@ void check_bumpers_left(unsigned long now){
         else{
         digitalWrite(SEL_BUMP_BOTTOM_LEFT, HIGH);
         Serial.println("Button press BUMP BOTTOM LEFT !!! .");
-        leds[1] = CRGB(255, 0, 0);
+        leds_set_pixel(STRIP_PACK_CIBLE, 1, CRGB(255, 0, 0));
         FastLED.show();
         bumpBottomLeftTimer = now;
         bumpBottomLeftActive = true;
@@ -155,7 +154,7 @@ void check_bumpers_left(unsigned long now){
     }
     if (bumpBottomLeftActive && now - bumpBottomLeftTimer >= 200) {
         digitalWrite(SEL_BUMP_BOTTOM_LEFT, LOW);
-        leds[1] = CRGB(0, 0, 0);
+        leds_set_pixel(STRIP_PACK_CIBLE, 1, CRGB(0, 0, 0));
         FastLED.show();
         bumpBottomLeftActive = false;
         triggerDetectedBumpBottomLeft = false;
@@ -170,7 +169,7 @@ void check_bumpers_right(unsigned long now){
         else{
             digitalWrite(SEL_BUMP_BOTTOM_RIGHT, HIGH);
             Serial.println("Button press BUMP BOTTOM RIGHT !!! .");
-            leds[2] = CRGB(255, 0, 0);
+            leds_set_pixel(STRIP_PACK_CIBLE, 2, CRGB(255, 0, 0));
             FastLED.show();
             bumpBottomRightTimer = now;
             bumpBottomRightActive = true;
@@ -180,7 +179,7 @@ void check_bumpers_right(unsigned long now){
     }
     if (bumpBottomRightActive && now - bumpBottomRightTimer >= 200) {
         digitalWrite(SEL_BUMP_BOTTOM_RIGHT, LOW);
-        leds[2] = CRGB(0, 0, 0);
+        leds_set_pixel(STRIP_PACK_CIBLE, 2, CRGB(0, 0, 0));
         FastLED.show();
         bumpBottomRightActive = false;
         triggerDetectedBumpBottomRight = false;
@@ -195,7 +194,7 @@ void check_bumpers_top(unsigned long now){
         else{
             digitalWrite(SEL_BUMP_TOP, HIGH);
             Serial.println("Button press BUMP TOP !!! .");
-            leds[0] = CRGB(255, 0, 0);
+            leds_set_pixel(STRIP_PACK_CIBLE, 0, CRGB(255, 0, 0));
             FastLED.show();
             bumpTopTimer = now;
             bumpTopActive = true;
@@ -205,7 +204,7 @@ void check_bumpers_top(unsigned long now){
     }
     if (bumpTopActive && now - bumpTopTimer >= 200) {
         digitalWrite(SEL_BUMP_TOP, LOW);
-        leds[0] = CRGB(0, 0, 0);
+        leds_set_pixel(STRIP_PACK_CIBLE, 0, CRGB(0, 0, 0));
         FastLED.show();
         bumpTopActive = false;
         triggerDetectedBumpTop = false;
@@ -243,7 +242,7 @@ void check_hill(unsigned long now) {
             
             digitalWrite(SEL_HILL, HIGH);
             Serial.println("ACTION HILL (après 3s de retard) !!!");
-            leds[3] = CRGB(255, 0, 0);
+            leds_set_pixel(STRIP_PACK_CIBLE, 3, CRGB(255, 0, 0));
             FastLED.show();
 
             // On lance le timer pour la durée d'activation (50ms)
@@ -255,7 +254,7 @@ void check_hill(unsigned long now) {
     // --- ÉTAPE 3 : FIN DE L'IMPULSION (100ms) ---
     if (triggerActiveHill && (now - triggerTimerHill >= 500)) {
         digitalWrite(SEL_HILL, LOW);
-        leds[3] = CRGB(0, 0, 0);
+        leds_set_pixel(STRIP_PACK_CIBLE, 3, CRGB(0, 0, 0));
         FastLED.show();
         triggerActiveHill = false;
     }
